@@ -10,7 +10,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 from django_pagarme import facade
 from django_pagarme.facade import InvalidNotificationStatusTransition
-from django_pagarme.models import PaymentViolation, Plan, PagarmeItemConfig
+from django_pagarme.models import PAID, TRIALING, PaymentViolation, Plan, PagarmeItemConfig
 
 logger = Logger(__file__)
 
@@ -229,16 +229,17 @@ def subscribe(request, slug):
     plan = facade.get_plan(slug)
     payload = json.loads(request.body)
     try:
-        payment = facade.create_subscription(plan, payload, request.user.id)
-        if payment.payment_method == facade.BOLETO:
+        result = facade.create_subscription(plan, payload, request.user.id)
+        if result.payment_method == facade.BOLETO and result.transaction_id:
             callback_url = reverse(
                 'django_pagarme:subscription_payment_bank_slip',
-                kwargs={'transaction_id': payment.transaction_id}
+                kwargs={'transaction_id': result.transaction_id}
             )
         else:
             callback_url = reverse('django_pagarme:thanks', kwargs={'slug': slug})
-    except Exception:
-        return HttpResponseBadRequest()
+    except Exception as e:
+        print("Exception", e)
+        return HttpResponseBadRequest(e)
 
     return HttpResponse(callback_url)
 

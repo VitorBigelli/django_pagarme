@@ -430,7 +430,7 @@ def get_plan(slug: str) -> Plan:
     return Plan.objects.filter(slug=slug).get()
 
 
-def create_subscription(plan: Plan, checkout_payload: dict, django_user_id=None) -> PagarmePayment:
+def create_subscription(plan: Plan, checkout_payload: dict, django_user_id=None) -> PagarmePayment or Subscription:
     domain = settings.ALLOWED_HOSTS[0]
     notification_path = reverse('django_pagarme:notification', kwargs={'slug': plan.slug})
     postback_url = f'https://{domain}{notification_path}'
@@ -444,9 +444,10 @@ def create_subscription(plan: Plan, checkout_payload: dict, django_user_id=None)
     if 'credit_card' in checkout_payload['payment_method']:
         subscription_data.update({'card_hash': checkout_payload['card_hash']})
 
+    payment = None
+    
     pagarme_subscription = subscription.create(subscription_data)
     current_transaction = pagarme_subscription['current_transaction']
-    payment = PagarmePayment.from_pagarme_subscription(pagarme_subscription)
 
     if django_user_id is None:
         try:
@@ -457,17 +458,14 @@ def create_subscription(plan: Plan, checkout_payload: dict, django_user_id=None)
             django_user_id = user.id
 
     if django_user_id is not None:
-        current_transaction.update({'customer': pagarme_subscription['customer']})
         profile = UserPaymentProfile.from_pagarme_subscription(django_user_id, pagarme_subscription)
         profile.save()
-
-    payment.user_id = django_user_id
 
     subscription_data = {
         'initial_status': pagarme_subscription['status'],
         'pagarme_id': pagarme_subscription['id'],
         'plan': plan,
-        'user': payment.user,
+        'user': profile.user,
         'payment_method': pagarme_subscription['payment_method'],
     }
     if pagarme_subscription['payment_method'] == CREDIT_CARD:
@@ -479,11 +477,22 @@ def create_subscription(plan: Plan, checkout_payload: dict, django_user_id=None)
     new_subscription = Subscription(**subscription_data)
     new_subscription.save()
 
-    payment.subscription = new_subscription
-    payment.extract_boleto_data(current_transaction)
-    payment.save()
+    if current_transaction:   
+        payment = PagarmePayment.from_pagarme_subscription(pagarme_subscription)
 
-    return payment
+        if django_user_id is not None:
+            current_transaction.update({'customer': pagarme_subscription['customer']})
+
+        payment.user_id = django_user_id
+
+        payment.subscription = new_subscription
+        payment.extract_boleto_data(current_transaction)
+        payment.save()
+
+    if payment:
+        return payment
+
+    return new_subscription
 
 
 _subscription_status_changed_listeners = []
