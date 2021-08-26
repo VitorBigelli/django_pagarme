@@ -2,6 +2,7 @@ import json
 from collections import ChainMap
 from logging import Logger
 
+from django.utils.datastructures import MultiValueDictKeyError
 from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseNotAllowed, Http404
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -112,15 +113,31 @@ def notification(request, slug):
 
     raw_body = request.body.decode('utf8')
     expected_signature = request.headers.get('X-Hub-Signature', '')
-    current_status = request.POST['current_status']
+    
+    try: 
+        current_status = request.POST['current_status']
+    except MultiValueDictKeyError:
+        current_status = request.POST['subscription[current_transaction][status]']
+
     event = request.POST['event']
+
     if event == 'subscription_status_changed':
         subscription_id = request.POST['subscription[id]']
         try:
             facade.handle_subscription_notification(
                subscription_id, current_status, raw_body, expected_signature, request.POST
             )
-        except Exception:
+        except Exception as e:
+            return HttpResponseBadRequest()
+
+    elif event == 'transaction_created':
+        subscription_id = request.POST['subscription[id]']
+        transaction_id = request.POST['subscription[current_transaction][id]']
+        try:
+            facade.handle_subscription_notification(
+               subscription_id, current_status, raw_body, expected_signature, request.POST
+            )
+        except Exception as e:
             return HttpResponseBadRequest()
 
     else:
@@ -131,7 +148,7 @@ def notification(request, slug):
             return HttpResponseBadRequest()
         except InvalidNotificationStatusTransition:
             pass
-
+    
     return HttpResponse()
 
 

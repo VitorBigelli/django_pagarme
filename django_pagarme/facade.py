@@ -110,10 +110,16 @@ def handle_notification(transaction_id: str, current_status: str, raw_body: str,
     try:
         payment_id = PagarmePayment.objects.values_list('id').get(transaction_id=transaction_id)[0]
     except PagarmePayment.DoesNotExist:
-        transaction_dict = to_pagarme_transaction(pagarme_notification_dict)
-        pagarme_payment, all_payments_items = PagarmePayment.from_pagarme_transaction(transaction_dict)
+        try:
+            transaction_dict = to_pagarme_transaction(pagarme_notification_dict)
+        except:
+            transaction_dict = pagarme_notification_dict
+            
+        pagarme_payment, all_payments_items = PagarmePayment.from_pagarme_transaction(pagarme_notification_dict)
         try:
             user = _user_factory(transaction_dict)
+        except ImpossibleUserCreation:
+            user = _user_factory(pagarme_notification_dict)
         except ImpossibleUserCreation:
             pass
         else:
@@ -188,6 +194,72 @@ def to_pagarme_transaction(pagarme_notification_dict: dict) -> dict:
                 'zipcode': pagarme_notification_dict['transaction[billing][address][zipcode]'],
                 'country': pagarme_notification_dict['transaction[billing][address][country]'],
                 'id': pagarme_notification_dict['transaction[billing][address][id]'],
+            }
+        }
+
+    }
+
+    
+def to_pagarme_transaction(pagarme_notification_dict: dict) -> dict:
+    """
+    Tranform from notification dict to transaction git
+    """
+    return {
+        'status': pagarme_notification_dict['current_status'],
+        'payment_method': pagarme_notification_dict['transaction[payment_method]'],
+        'authorized_amount': int(pagarme_notification_dict['transaction[authorized_amount]']),
+        'card_last_digits': pagarme_notification_dict.get('transaction[card][last_digits]'),
+        'installments': int(pagarme_notification_dict['transaction[installments]']),
+        'id': pagarme_notification_dict['transaction[id]'],
+        'card': {
+            'id': pagarme_notification_dict.get('transaction[card][id]')
+        },
+        'items': [
+            {
+                'id': pagarme_notification_dict['transaction[items][0][id]'],
+                'unit_price': int(pagarme_notification_dict['transaction[items][0][unit_price]']),
+            }
+
+        ],
+        'customer': {
+            'object': pagarme_notification_dict['transaction[customer][object]'],
+            'id': pagarme_notification_dict['transaction[customer][id]'],
+            'external_id': pagarme_notification_dict['transaction[customer][external_id]'],
+            'type': pagarme_notification_dict['transaction[customer][type]'],
+            'country': pagarme_notification_dict['transaction[customer][country]'],
+            'document_number': pagarme_notification_dict['transaction[customer][document_number]'],
+            'document_type': pagarme_notification_dict['transaction[customer][document_type]'],
+            'name': pagarme_notification_dict['transaction[customer][name]'],
+            'email': pagarme_notification_dict['transaction[customer][email]'],
+            'phone_numbers': [
+                pagarme_notification_dict['transaction[customer][phone_numbers][0]']
+            ],
+            'born_at': pagarme_notification_dict['transaction[customer][born_at]'],
+            'birthday': pagarme_notification_dict['transaction[customer][birthday]'],
+            'gender': pagarme_notification_dict['transaction[customer][gender]'],
+            'date_created': pagarme_notification_dict['transaction[customer][date_created]'],
+            'documents': [{
+                'object': pagarme_notification_dict['transaction[customer][documents][0][object]'],
+                'id': pagarme_notification_dict['transaction[customer][documents][0][id]'],
+                'type': pagarme_notification_dict['transaction[customer][documents][0][type]'],
+                'number': pagarme_notification_dict['transaction[customer][documents][0][number]'],
+            }]
+        },
+        'billing': {
+            'object': pagarme_notification_dict['transaction[billing][object]'],
+            'id': pagarme_notification_dict['transaction[billing][id]'],
+            'name': pagarme_notification_dict['transaction[billing][name]'],
+            'address': {
+                'object': pagarme_notification_dict['subscription[address][object]'],
+                'street': pagarme_notification_dict['subscription[address][street]'],
+                'complementary': pagarme_notification_dict['subscription[address][complementary]'],
+                'street_number': pagarme_notification_dict['subscription[address][street_number]'],
+                'neighborhood': pagarme_notification_dict['subscription[address][neighborhood]'],
+                'city': pagarme_notification_dict['subscription[address][city]'],
+                'state': pagarme_notification_dict['subscription[address][state]'],
+                'zipcode': pagarme_notification_dict['subscription[address][zipcode]'],
+                'country': pagarme_notification_dict['subscription[address][country]'],
+                'id': pagarme_notification_dict['subscription[address][id]'],
             }
         }
 
@@ -447,6 +519,7 @@ def create_subscription(plan: Plan, checkout_payload: dict, django_user_id=None)
     payment = None
     
     pagarme_subscription = subscription.create(subscription_data)
+    print("Subscription data", pagarme_subscription)
     current_transaction = pagarme_subscription['current_transaction']
 
     if django_user_id is None:
@@ -520,12 +593,17 @@ def handle_subscription_notification(
         raise PaymentViolation('')
 
     subscription = find_subscription_by_id(subscription_id)
+        
     try:
         transaction_id = pagarme_notification_dict['subscription[current_transaction][id]']
         payment_id = PagarmePayment.objects.values_list('id').get(transaction_id=transaction_id)[0]
     except PagarmePayment.DoesNotExist:
-        subscription_dict = to_pagarme_subscription(pagarme_notification_dict)
-        pagarme_payment = PagarmePayment.from_pagarme_subscription(subscription_dict)
+        try: 
+            subscription_dict = to_pagarme_subscription(pagarme_notification_dict)
+            pagarme_payment = PagarmePayment.from_pagarme_subscription(subscription_dict)
+        except: 
+            subscription_dict = to_pagarme_subscription_transaction(pagarme_notification_dict)
+            pagarme_payment = PagarmePayment.from_pagarme_subscription(subscription_dict)
         try:
             user = _user_factory(subscription_dict)
         except ImpossibleUserCreation:
@@ -534,6 +612,11 @@ def handle_subscription_notification(
             pagarme_payment.user_id = user.id
             profile = UserPaymentProfile.from_pagarme_subscription(user.id, subscription_dict)
             profile.save()
+    except Exception as e: 
+        print("Exception", e)
+
+    subscription.plan = Plan.objects.get(pagarme_id=subscription_dict['plan']['id'])
+    subscription.save()
 
     return _save_subscription_notification(subscription_id, current_status)
 
@@ -563,7 +646,7 @@ def to_pagarme_subscription(pagarme_notification_dict: dict) -> dict:
             'boleto_expiration_date': pagarme_notification_dict['subscription[current_transaction][boleto_expiration_date]'],
         },
         'payment_method': pagarme_notification_dict['subscription[payment_method]'],
-        'status': pagarme_notification_dict['current_status'],
+        'status': pagarme_notification_dict['status'],
         'phone': {
             'ddi': pagarme_notification_dict['subscription[phone][ddi]'],
             'ddd': pagarme_notification_dict['subscription[phone][ddd]'],
@@ -605,15 +688,90 @@ def to_pagarme_subscription(pagarme_notification_dict: dict) -> dict:
 
     return subscription_dict
 
+def to_pagarme_subscription_transaction(pagarme_notification_dict: dict) -> dict:
+    """
+    Tranform from notification dict to subscription dict
+    """
+    subscription_dict = {
+        'plan': {
+            'id': pagarme_notification_dict['subscription[plan][id]'],
+        },
+        'id': pagarme_notification_dict['subscription[id]'],
+        'current_transaction': {
+            'status': pagarme_notification_dict['subscription[current_transaction][status]'],
+            'authorized_amount': pagarme_notification_dict['subscription[current_transaction][authorized_amount]'],
+            'id': pagarme_notification_dict['subscription[current_transaction][id]'],
+            'cost': pagarme_notification_dict['subscription[current_transaction][cost]'],
+            'installments': pagarme_notification_dict['subscription[current_transaction][installments]'],
+            'card_holder_name': pagarme_notification_dict['subscription[current_transaction][card_holder_name]'],
+            'card_last_digits': pagarme_notification_dict['subscription[current_transaction][card_last_digits]'],
+            'card_first_digits': pagarme_notification_dict['subscription[current_transaction][card_first_digits]'],
+            'card_brand': pagarme_notification_dict['subscription[current_transaction][card_brand]'],
+            'payment_method': pagarme_notification_dict['subscription[current_transaction][payment_method]'],
+            'boleto_url': pagarme_notification_dict['subscription[current_transaction][boleto_url]'],
+            'boleto_barcode': pagarme_notification_dict['subscription[current_transaction][boleto_barcode]'],
+            'boleto_expiration_date': pagarme_notification_dict['subscription[current_transaction][boleto_expiration_date]'],
+        },
+        'payment_method': pagarme_notification_dict['subscription[payment_method]'],
+        'status': pagarme_notification_dict['subscription[current_transaction][status]'],
+        'phone': {
+            'ddi': pagarme_notification_dict['subscription[phone][ddi]'],
+            'ddd': pagarme_notification_dict['subscription[phone][ddd]'],
+            'number': pagarme_notification_dict['subscription[phone][number]'],
+        },
+        'address': {
+            'street': pagarme_notification_dict['subscription[address][street]'],
+            'complementary': pagarme_notification_dict['subscription[address][complementary]'],
+            'street_number': pagarme_notification_dict['subscription[address][street_number]'],
+            'neighborhood': pagarme_notification_dict['subscription[address][neighborhood]'],
+            'city': pagarme_notification_dict['subscription[address][city]'],
+            'state': pagarme_notification_dict['subscription[address][state]'],
+            'zipcode': pagarme_notification_dict['subscription[address][zipcode]'],
+            'country': pagarme_notification_dict['subscription[address][country]'],
+        },
+        'customer': {
+            'id': pagarme_notification_dict['subscription[customer][id]'],
+            'type': pagarme_notification_dict['subscription[customer][type]'],
+            'country': pagarme_notification_dict['subscription[customer][country]'],
+            'document_number': pagarme_notification_dict['subscription[customer][document_number]'],
+            'document_type': pagarme_notification_dict['subscription[customer][document_type]'],
+            'name': pagarme_notification_dict['subscription[customer][name]'],
+            'email': pagarme_notification_dict['subscription[customer][email]'],
+        },
+    }
+
+    if pagarme_notification_dict.get('subscription[card][id]'):
+        subscription_dict.update({
+            'card': {
+                'id': pagarme_notification_dict['subscription[customer][email]'],
+                'brand': pagarme_notification_dict['subscription[customer][email]'],
+                'holder_name': pagarme_notification_dict['subscription[customer][email]'],
+                'first_digits': pagarme_notification_dict['subscription[customer][email]'],
+                'last_digits': pagarme_notification_dict['subscription[customer][email]'],
+                'country': pagarme_notification_dict['subscription[customer][email]'],
+                'expiration_date': pagarme_notification_dict['subscription[customer][email]'],
+            }
+        })
+
+    return subscription_dict
+
 
 _impossible_subscription_states = {
     TRIALING: {TRIALING},
-    PAID: {TRIALING, PAID},
+    PAID: { TRIALING },
     UNPAID: {TRIALING, UNPAID},
     PENDING_PAYMENT: {TRIALING, PENDING_PAYMENT},
     ENDED: {TRIALING, PAID, PENDING_PAYMENT, UNPAID, ENDED, CANCELED},
     CANCELED: {TRIALING, PAID, PENDING_PAYMENT, UNPAID, ENDED, CANCELED},
 }
+
+# def update_subscription(pagarme_notification): 
+#     """
+#     Will update subscription when it change plans
+#     :param pagarme_notification
+#     :return updated_subscription
+#     """
+#     subscription = find_subscription_by_id(pagarme_notification['id'])
 
 
 def _save_subscription_notification(subscription_id, current_status):
