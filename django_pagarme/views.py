@@ -128,7 +128,8 @@ def notification(request, slug):
                subscription_id, current_status, raw_body, expected_signature, request.POST
             )
         except Exception as e:
-            return HttpResponseBadRequest()
+            print("View Exception", e)
+            return HttpResponseBadRequest(e)
 
     elif event == 'transaction_created':
         subscription_id = request.POST['subscription[id]']

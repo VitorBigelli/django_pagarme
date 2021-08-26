@@ -519,7 +519,6 @@ def create_subscription(plan: Plan, checkout_payload: dict, django_user_id=None)
     payment = None
     
     pagarme_subscription = subscription.create(subscription_data)
-    print("Subscription data", pagarme_subscription)
     current_transaction = pagarme_subscription['current_transaction']
 
     if django_user_id is None:
@@ -594,16 +593,18 @@ def handle_subscription_notification(
 
     subscription = find_subscription_by_id(subscription_id)
         
+    subscription_dict = {}
     try:
         transaction_id = pagarme_notification_dict['subscription[current_transaction][id]']
         payment_id = PagarmePayment.objects.values_list('id').get(transaction_id=transaction_id)[0]
     except PagarmePayment.DoesNotExist:
         try: 
             subscription_dict = to_pagarme_subscription(pagarme_notification_dict)
-            pagarme_payment = PagarmePayment.from_pagarme_subscription(subscription_dict)
-        except: 
+        except Exception as e:
             subscription_dict = to_pagarme_subscription_transaction(pagarme_notification_dict)
-            pagarme_payment = PagarmePayment.from_pagarme_subscription(subscription_dict)
+
+        pagarme_payment = PagarmePayment.from_pagarme_subscription(subscription_dict)
+
         try:
             user = _user_factory(subscription_dict)
         except ImpossibleUserCreation:
@@ -612,11 +613,12 @@ def handle_subscription_notification(
             pagarme_payment.user_id = user.id
             profile = UserPaymentProfile.from_pagarme_subscription(user.id, subscription_dict)
             profile.save()
-    except Exception as e: 
-        print("Exception", e)
 
-    subscription.plan = Plan.objects.get(pagarme_id=subscription_dict['plan']['id'])
-    subscription.save()
+        
+        subscription.plan = Plan.objects.get(pagarme_id=subscription_dict['plan']['id'])
+        subscription.initial_status = subscription_dict['status']
+        subscription.save()
+
 
     return _save_subscription_notification(subscription_id, current_status)
 
