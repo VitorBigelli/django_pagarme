@@ -4,6 +4,9 @@
     var csfr_token = document.querySelector('[name=csrfmiddlewaretoken]').value
     var button = document.querySelector('.pay-button');
 
+    // Define o numero de parcelas permitidas com base no tipo de plano
+    var installments = {% if "anual" in plan.slug %} 12 {% elif "mensal" in plan.slug %} 1 {% else %} 4 {% endif %}
+
     function initiateCheckout() {
         {# inicia a instância do checkout #}
         var checkout = new PagarMeCheckout.Checkout({
@@ -43,11 +46,11 @@
             reviewInformations: {% if review_informations %}'true'{% else %}'false'{% endif %},
             createToken: {% if plan %}'false'{% else %}'true'{% endif %},
             postback_url: '{{postback_url}}',
+            maxInstallments: installments,
+            defaultInstallment: installments,
             {% if payment_item %}
                 amount: {{payment_item.price}},
                 paymentMethods: '{{payment_item.default_config.payments_methods}}',
-                maxInstallments: {{payment_item.default_config.max_installments}},
-                defaultInstallment: {{payment_item.default_config.default_installment}},
                 freeInstallments: {{payment_item.default_config.free_installment}},
                 interestRate: {{payment_item.default_config.interest_rate|interest_rate}},
                 items: [

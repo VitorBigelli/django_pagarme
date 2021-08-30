@@ -115,8 +115,13 @@ def notification(request, slug):
     expected_signature = request.headers.get('X-Hub-Signature', '')
     
     try: 
+        # When subscription is PAID or UNPAID
         current_status = request.POST['current_status']
     except MultiValueDictKeyError:
+        # When subscription is cancelled
+        current_status = request.POST['status']
+    except MultiValueDictKeyError:
+        # When subscription plan changes
         current_status = request.POST['subscription[current_transaction][status]']
 
     event = request.POST['event']
@@ -128,7 +133,6 @@ def notification(request, slug):
                subscription_id, current_status, raw_body, expected_signature, request.POST
             )
         except Exception as e:
-            print("View Exception", e)
             return HttpResponseBadRequest(e)
 
     elif event == 'transaction_created':

@@ -591,33 +591,39 @@ def handle_subscription_notification(
     if not postback.validate(expected_signature, raw_body):
         raise PaymentViolation('')
 
-    subscription = find_subscription_by_id(subscription_id)
-        
-    subscription_dict = {}
-    try:
-        transaction_id = pagarme_notification_dict['subscription[current_transaction][id]']
-        payment_id = PagarmePayment.objects.values_list('id').get(transaction_id=transaction_id)[0]
-    except PagarmePayment.DoesNotExist:
-        try: 
-            subscription_dict = to_pagarme_subscription(pagarme_notification_dict)
-        except Exception as e:
-            subscription_dict = to_pagarme_subscription_transaction(pagarme_notification_dict)
+    subscription = find_subscription_by_id(subscription_id) 
 
-        pagarme_payment = PagarmePayment.from_pagarme_subscription(subscription_dict)
-
-        try:
-            user = _user_factory(subscription_dict)
-        except ImpossibleUserCreation:
-            pass
-        else:
-            pagarme_payment.user_id = user.id
-            profile = UserPaymentProfile.from_pagarme_subscription(user.id, subscription_dict)
-            profile.save()
-
-        
-        subscription.plan = Plan.objects.get(pagarme_id=subscription_dict['plan']['id'])
-        subscription.initial_status = subscription_dict['status']
+    if current_status == CANCELED and subscription.initial_status == TRIALING:
+        subscription.initial_status = current_status
         subscription.save()
+
+    else: 
+        subscription_dict = {}
+        
+        try:
+            transaction_id = pagarme_notification_dict['subscription[current_transaction][id]']
+            payment_id = PagarmePayment.objects.values_list('id').get(transaction_id=transaction_id)[0]
+        except PagarmePayment.DoesNotExist:
+            try: 
+                subscription_dict = to_pagarme_subscription(pagarme_notification_dict)
+            except Exception as e:
+                subscription_dict = to_pagarme_subscription_transaction(pagarme_notification_dict)
+
+            pagarme_payment = PagarmePayment.from_pagarme_subscription(subscription_dict)
+
+            try:
+                user = _user_factory(subscription_dict)
+            except ImpossibleUserCreation:
+                pass
+            else:
+                pagarme_payment.user_id = user.id
+                profile = UserPaymentProfile.from_pagarme_subscription(user.id, subscription_dict)
+                profile.save()
+
+            
+            subscription.plan = Plan.objects.get(pagarme_id=subscription_dict['plan']['id'])
+            subscription.initial_status = subscription_dict['status']
+            subscription.save()
 
 
     return _save_subscription_notification(subscription_id, current_status)
