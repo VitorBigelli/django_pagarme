@@ -475,7 +475,7 @@ def _remove_orphan_plans(all_plans: list) -> None:
 
 
 def synchronize_plans():
-    plans_to_sync = plan.find_all()
+    plans_to_sync = plan.find_all({ "count": 100 })
     count = 0
     total = len(plans_to_sync)
     logger.info('Iniciando sincronia de planos...')
