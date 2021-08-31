@@ -119,10 +119,11 @@ def notification(request, slug):
         current_status = request.POST['current_status']
     except MultiValueDictKeyError:
         # When subscription is cancelled
-        current_status = request.POST['status']
-    except MultiValueDictKeyError:
-        # When subscription plan changes
-        current_status = request.POST['subscription[current_transaction][status]']
+        try:
+            current_status = request.POST['status']
+        except KeyError:
+            # When subscription plan changes
+            current_status = request.POST['subscription[current_transaction][status]']
 
     event = request.POST['event']
 
@@ -155,7 +156,6 @@ def notification(request, slug):
             pass
     
     return HttpResponse()
-
 
 def pagarme(request, slug):
     payment_item = facade.get_payment_item(slug)
