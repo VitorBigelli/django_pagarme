@@ -212,7 +212,7 @@ class Subscription(models.Model):
         verbose_name_plural = 'Assinaturas'
 
     def __str__(self):
-        return self.pagarme_id
+        return str(self.pagarme_id)
 
     @property
     def status(self) -> str:
