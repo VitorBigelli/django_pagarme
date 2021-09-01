@@ -13,6 +13,12 @@ from django_pagarme.models import (
     PagarmePayment, PaymentViolation, REFUNDED, REFUSED, UserPaymentProfile, WAITING_PAYMENT, PagarmePaymentItem,
     Plan, Subscription, SubscriptionNotification, PENDING_PAYMENT, TRIALING, ENDED, CANCELED, UNPAID,
 )
+from pagarme.resources import handler_request
+from pagarme.resources.routes import plan_routes
+
+
+def find_all_plans(params):
+    return handler_request.get(plan_routes.GET_ALL_PLANS, params)
 
 # It's here to be available on facade contract
 UserPaymentProfileDoesNotExist = UserPaymentProfile.DoesNotExist
@@ -475,7 +481,7 @@ def _remove_orphan_plans(all_plans: list) -> None:
 
 
 def synchronize_plans():
-    plans_to_sync = plan.find_all({ "count": 100 })
+    plans_to_sync = find_all_plans({ "count": 100 })
     count = 0
     total = len(plans_to_sync)
     logger.info('Iniciando sincronia de planos...')
