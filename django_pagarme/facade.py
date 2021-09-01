@@ -599,10 +599,18 @@ def handle_subscription_notification(
 
     subscription = find_subscription_by_id(subscription_id) 
 
-    if current_status == CANCELED and subscription.initial_status == TRIALING:
+    print(subscription.initial_status, 'to', current_status)
+
+    if current_status == CANCELED:
+        try: 
+            notification = _save_subscription_notification(subscription_id, current_status)
+        except: 
+            pass
         subscription.initial_status = current_status
         subscription.save()
-
+        print('Subscription', subscription)
+        return
+        
     else: 
         subscription_dict = {}
         
