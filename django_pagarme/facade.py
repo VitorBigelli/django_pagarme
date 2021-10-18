@@ -481,7 +481,10 @@ def _remove_orphan_plans(all_plans: list) -> None:
 
 
 def synchronize_plans():
-    plans_to_sync = find_all_plans({ "count": 100 })
+    all_plans = find_all_plans({ "count": 1000 })
+
+    plans_to_sync = [ x for x in all_plans if 'DEPRECATED' not in x['name'] ]
+
     count = 0
     total = len(plans_to_sync)
     logger.info('Iniciando sincronia de planos...')
