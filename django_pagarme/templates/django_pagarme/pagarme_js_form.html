@@ -7,8 +7,14 @@
     // Define o numero de parcelas permitidas com base no tipo de plano
     var installments = {% if "anual" in plan.slug %} 12 {% elif "mensal" in plan.slug %} 1 {% else %} 4 {% endif %}
 
+    {% if payment_item %} 
+        installments = parseInt('{{ payment_item.default_config.maxInstallments }}')
+    {% endif %}
+
+
     function initiateCheckout() {
         {# inicia a instância do checkout #}
+        
         var checkout = new PagarMeCheckout.Checkout({
             encryption_key: '{{CHAVE_PAGARME_CRIPTOGRAFIA_PUBLICA}}',
             success: function (data) {
