@@ -115,13 +115,54 @@ def handle_notification(transaction_id: str, current_status: str, raw_body: str,
         raise PaymentViolation('')
     try:
         payment_id = PagarmePayment.objects.values_list('id').get(transaction_id=transaction_id)[0]
+        print(payment_id)
     except PagarmePayment.DoesNotExist:
         try:
-            transaction_dict = to_pagarme_transaction(pagarme_notification_dict)
-        except:
+            transaction_dict = transaction_to_pagarme_transaction(pagarme_notification_dict)
+            print('Transaction dictionary')
+        except Exception as e:
+            print(e)
             transaction_dict = pagarme_notification_dict
+            print("Notifiation dictionary")
             
         pagarme_payment, all_payments_items = PagarmePayment.from_pagarme_transaction(pagarme_notification_dict)
+        print("Payment items", all_payments_items)
+        try:
+            user = _user_factory(transaction_dict)
+            print(user)
+        except ImpossibleUserCreation:
+            user = _user_factory(pagarme_notification_dict)
+        except ImpossibleUserCreation:
+            pass
+        else:
+            pagarme_payment.user_id = user.id
+            profile = UserPaymentProfile.from_pagarme_dict(user.id, transaction_dict)
+            print(profile)
+            profile.save()
+
+        with django_transaction.atomic():
+            pagarme_payment.items.set(all_payments_items)
+            pagarme_payment.save()
+
+        payment_id = pagarme_payment.id
+    return _save_notification(payment_id, current_status)
+
+
+def handle_transaction_notification(transaction_id: str, current_status: str, raw_body: str,
+                        expected_signature: str, pagarme_notification_dict) -> PagarmeNotification:
+    if not postback.validate(expected_signature, raw_body):
+        raise PaymentViolation('')
+    try:
+        payment_id = PagarmePayment.objects.values_list('id').get(transaction_id=transaction_id)[0]
+    except PagarmePayment.DoesNotExist:
+        try:
+            transaction_dict = transaction_to_pagarme_transaction(pagarme_notification_dict)
+            print('Transaction dictionary')
+        except Exception as e:
+            transaction_dict = pagarme_notification_dict
+            print("Notifiation dictionary")
+            
+        pagarme_payment, all_payments_items = PagarmePayment.from_pagarme_transaction(transaction_dict)
         try:
             user = _user_factory(transaction_dict)
         except ImpossibleUserCreation:
@@ -140,7 +181,7 @@ def handle_notification(transaction_id: str, current_status: str, raw_body: str,
     return _save_notification(payment_id, current_status)
 
 
-def to_pagarme_transaction(pagarme_notification_dict: dict) -> dict:
+def transaction_to_pagarme_transaction(pagarme_notification_dict: dict) -> dict:
     """
     Tranform from notification dict to transaction git
     """

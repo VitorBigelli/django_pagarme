@@ -146,6 +146,11 @@ def notification(request, slug):
         except Exception as e:
             return HttpResponseBadRequest()
 
+    elif event == "transaction_status_changed": 
+        print('Transaction status changed')
+        transaction_id = request.POST['transaction[id]']
+        facade.handle_transaction_notification(transaction_id, current_status, raw_body, expected_signature, request.POST)
+
     else:
         transaction_id = request.POST['transaction[id]']
         try:
